@@ -1,4 +1,4 @@
-# Obsidian Corvids 🐦‍⬛
+# 🐦‍⬛ Obsidian Corvids
 ### Virtual C-Suite Executive Hub
 
 Python-based multi-agent executive running localy built with Streamlit and Ollama.
@@ -9,6 +9,9 @@ The project draft split roles in: CFO, CISO, CMO, and COO using local models wit
 Designed as an experimental architecture for mini enterprise workflows:
 - It route natural language queries to specialized functional tools.
 - Maintain conversation state and share executive-level insights in real time.
+
+### How it looks like:
+<img width="402" alt="image" src="https://github.com/user-attachments/assets/a33a7fd1-9c6e-490c-8fa0-fc39208f2782" />
 
 ---
 
