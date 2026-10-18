@@ -10,8 +10,18 @@ st.set_page_config(
     page_icon="assets/logo.png",
     layout="centered")
 
-st.title("🐦‍⬛ Obsidian Corvids \n Virtual C-Suite Executive Hub")
+# Header with Logo
+col1, col2 = st.columns([1, 4], vertical_alignment="center")
+
+with col1:
+    st.image("assets/logo.png", width=120)
+
+with col2:
+    st.title("Obsidian Corvids")
+    st.caption("Virtual C-Suite Executive Hub")
+
 st.caption("Powered locally by Ollama (Llama 3.2) & Multi-Agent Tool Calling")
+st.divider()
 
 # Initialize chat history in session state
 if "messages" not in st.session_state:
