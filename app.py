@@ -5,7 +5,10 @@ from tools import AVAILABLE_TOOLS
 # Map function names to actual callables for execution
 tool_map = {fn.__name__: fn for fn in AVAILABLE_TOOLS}
 
-st.set_page_config(page_title="Obsidian Corvids - Virtual C-Suite Hub", page_icon="🐦‍⬛", layout="centered")
+st.set_page_config(
+    page_title="Obsidian Corvids - Virtual C-Suite Hub",
+    page_icon="assets/logo.png",
+    layout="centered")
 
 st.title("🐦‍⬛ Obsidian Corvids \n Virtual C-Suite Executive Hub")
 st.caption("Powered locally by Ollama (Llama 3.2) & Multi-Agent Tool Calling")
