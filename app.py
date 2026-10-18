@@ -10,6 +10,12 @@ st.set_page_config(
     page_icon="assets/logo.png",
     layout="centered")
 
+with st.sidebar:
+    st.image("assets/logo.png", width="stretch")
+    st.title("Obsidian Corvids")
+    st.markdown("---")
+    st.write("System Status: **Under Development**")
+
 # Header with Logo
 col1, col2 = st.columns([1, 4], vertical_alignment="center")
 
