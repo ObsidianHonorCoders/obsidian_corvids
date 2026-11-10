@@ -40,11 +40,12 @@ env/
 .env.*
 !.env.example
 *.local
+secrets/
 
 # =====================================
 # Streamlit Artifacts & Caches
 # =====================================
-.streamlit/
+.streamlit/secrets.toml
 *.log
 hub/
 

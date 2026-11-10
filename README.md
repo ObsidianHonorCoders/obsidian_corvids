@@ -1,53 +1,71 @@
-# 🐦‍⬛ Obsidian Corvids
-### Virtual C-Suite Executive Hub
+# Obsidian Corvids
 
-Python-based multi-agent executive running localy built with Streamlit and Ollama.
-This project uses multi-agent orchestration and dynamic tool-routing across critical enterprise domains.
+A Streamlit chat interface with one Ollama-powered orchestrator and four fixed demonstration-data tools (CFO, CISO, CMO, COO). It is not a multi-agent system and does not connect to live business or security systems. All tool output is simulated and must not be used for business or compliance decisions.
 
-The project draft split roles in: CFO, CISO, CMO, and COO using local models with zero external API dependencies.
+## Local Development
 
-Designed as an experimental architecture for mini enterprise workflows:
-- It route natural language queries to specialized functional tools.
-- Maintain conversation state and share executive-level insights in real time.
+Requirements: Python 3.12, Ollama, and the `llama3.2` model.
 
-### How it looks like:
-<img width="402" alt="image" src="https://github.com/user-attachments/assets/a33a7fd1-9c6e-490c-8fa0-fc39208f2782" />
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+ollama pull llama3.2
+python -m streamlit run app.py
+```
 
----
+Local mode has no authentication and is for loopback development only. Do not publish it. Ollama defaults to `http://127.0.0.1:11434`; set `OLLAMA_HOST` and `OLLAMA_MODEL` to override the local defaults.
 
-### How to Run Locally - First-Time Setup
-If this is your first time cloning or running the repository on your machine, follow these steps in your terminal:
+## Tests And Checks
 
-1. **Create and activate a virtual environment:**
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   ```
+```powershell
+python -m unittest discover -s tests -v
+python -m pip install -r requirements-dev.txt
+ruff check app.py orchestrator.py runtime.py tools.py tests
+pip-audit -r requirements.txt
+```
 
-2. **Install dependencies:**
-   ```powershell
-   pip install -r requirements.txt
-   ```
+The CI workflow runs these tests, lint, and dependency auditing on Python 3.12.
 
-3. **Ensure Ollama is running and download the model:**
-   Make sure your local Ollama desktop app or service is active, then pull the required model:
-   ```powershell
-   ollama pull llama3.2
-   ```
+## Cloudflare Tunnel Deployment
 
-4. **Launch the application:**
-   ```powershell
-   python -m streamlit run app.py
-   ```
+The included Compose stack runs the app, Ollama, and `cloudflared`. It publishes no host ports. The app talks to Ollama on a private Docker bridge; Ollama's API is never routed through the tunnel. Docker networks allow outbound access for model downloads. Use one app replica: concurrency and per-user quotas are process-local.
 
-#### Subsequent Executions
-Once you have already set up the project and environment, running it day-to-day only takes two quick steps:
+1. Create a remotely managed Cloudflare Tunnel. Create a Cloudflare Access self-hosted application and a deny-by-default Allow policy for the intended users **before** publishing a public hostname.
+2. Add a public hostname route targeting `http://app:8501` from the tunnel connector. Enable Access JWT validation with the tunnel's **Protect with Access** setting and configure the Access policy and session duration.
+3. Obtain the Access team slug and the application's AUD tag. Get the Python base image digest and versioned Ollama and cloudflared images from trusted registries.
+4. Copy `.env.example` to `.env` and replace the image and Access placeholders. Use a cloudflared image version 2025.4.0 or later (required for token-file support). Create `secrets/cloudflared-token` containing only the tunnel token, with filesystem access restricted to deployment administrators. This path is ignored by Git and excluded from the app build context.
+5. Start the stack and pull the model:
 
-1. **Activate the virtual environment:**
-   ```powershell
-   .\venv\Scripts\Activate.ps1
-   ```
+```powershell
+Copy-Item .env.example .env
+# Edit .env and create secrets/cloudflared-token before continuing.
+docker compose config --quiet
+docker compose up --build -d
+docker compose exec ollama ollama pull llama3.2
+```
 
-2. **Launch the application:**
-   ```powershell
-   python -m streamlit run app.py
+6. In Cloudflare, confirm the hostname has the intended Access application and policy. Test that an unauthenticated browser is denied, an authorized browser can use chat, the origin has no published host port, and the public hostname cannot access Ollama. Test expiration and reauthentication as well.
+
+Production startup requires `APP_ENV=production`, `CF_ACCESS_TEAM`, and `CF_ACCESS_AUD`; Compose sets production mode and fails if required deployment settings are missing. Every app request validates the Cloudflare Access JWT's signature, issuer, audience, and required claims. Requests are limited to 10 per identity per minute and one concurrent model request per process. Chat input is limited to 1,500 characters, history to 5,000 serialized characters, tool output to 2,000 characters per call, and generated output to 512 tokens.
+
+Do not set `APP_ENV=development` on a published service. The development mode intentionally bypasses authentication. If Cloudflare Access is not validating the origin token at the tunnel, the app still validates it itself, but the tunnel-side validation is defense in depth and should be enabled.
+
+## Operational Limitations
+
+- This is a single-host demo deployment, not a highly available production architecture. Ollama needs sufficient RAM/VRAM; model inference capacity has not been load-tested.
+- The in-process limiter does not coordinate across replicas or restarts. Add a shared rate-limit store before scaling out.
+- Dependency ranges are not a lockfile. Resolve and commit a reviewed, hash-pinned lock and pin container images by digest before a production release. The current environment could not reach its configured package index, so dependencies and image compatibility were not verified here.
+- Configure host backups for the `ollama_models` volume, service monitoring, disk and GPU alerts, incident response, and an update/rollback schedule. Avoid collecting prompts or tokens in logs.
+- Real data requires separate least-privilege connectors, authorization by authenticated user and tenant, provenance and freshness metadata, audit logging, privacy/retention rules, and security testing. The current tools must remain demo-only.
+
+## Architecture
+
+```text
+Browser
+  -> Cloudflare Access
+  -> Cloudflare Tunnel
+  -> Streamlit app (JWT validation, request limits, session UI)
+  -> Ollama on private Docker network
+  -> fixed, read-only demonstration tools
+```

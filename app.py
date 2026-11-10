@@ -1,111 +1,77 @@
-import streamlit as st
+import logging
+
 import ollama
-from tools import AVAILABLE_TOOLS
+import streamlit as st
 
-# Map function names to actual callables for execution
-tool_map = {fn.__name__: fn for fn in AVAILABLE_TOOLS}
+from orchestrator import Orchestrator, Turn, TurnError
+from runtime import AccessDenied, AccessVerifier, Admission, CapacityError, Settings
 
-st.set_page_config(
-    page_title="Obsidian Corvids - Virtual C-Suite Hub",
-    page_icon="assets/logo.png",
-    layout="centered")
+
+logger = logging.getLogger("obsidian_corvids")
+
+
+st.set_page_config(page_title="Obsidian Corvids", page_icon="assets/logo.png", layout="centered")
+
+
+@st.cache_resource
+def services():
+    settings = Settings.load()
+    client = ollama.Client(host=settings.ollama_host, timeout=120)
+    return settings, AccessVerifier(settings), Admission(), Orchestrator(client, settings.model)
+
+try:
+    settings, access, admission, orchestrator = services()
+    token = st.context.headers.get("Cf-Access-Jwt-Assertion")
+    identity = access.identity(token)
+except (AccessDenied, ValueError) as error:
+    st.error(str(error))
+    st.stop()
+except Exception as error:
+    logger.error("Service initialization failed: %s", type(error).__name__)
+    st.error("The service is temporarily unavailable.")
+    st.stop()
+
+if st.session_state.get("identity") != identity:
+    st.session_state.identity = identity
+    st.session_state.chat_history = []
 
 with st.sidebar:
-    st.image("assets/logo.png", width="stretch")
+    st.image("assets/logo.png", width=180)
     st.title("Obsidian Corvids")
-    st.markdown("---")
-    st.write("System Status: **Under Development**")
+    st.caption("Virtual C-Suite")
+    if st.button("Clear conversation", icon=":material/delete_sweep:"):
+        st.session_state.chat_history = []
+        st.rerun()
+    st.caption(f"Model: {settings.model}")
 
-# Header with Logo
-col1, col2 = st.columns([1, 4], vertical_alignment="center")
+st.title("Executive Hub")
+st.caption("A single orchestrator consulting CFO, CISO, CMO and COO data tools.")
+st.warning(
+    "DEMO DATA ONLY. All metrics are fixed examples, not live business, security, "
+    "audit, or compliance information. Do not use for business decisions."
+)
+if settings.environment == "development":
+    st.info("Development mode has no authentication. Never publish this mode to the internet.")
 
-with col1:
-    st.image("assets/logo.png", width=120)
-
-with col2:
-    st.title("Obsidian Corvids")
-    st.caption("Virtual C-Suite Executive Hub")
-
-st.caption("Powered locally by Ollama (Llama 3.2) & Multi-Agent Tool Calling")
-st.divider()
-
-# Initialize chat history in session state
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are the Executive Orchestrator for the Virtual C-Suite. "
-                "Analyze user questions regarding finance, security, marketing, or operations, "
-                "and call the appropriate C-suite expert tool (CFO, CISO, CMO, COO) before "
-                "synthesizing a professional executive answer."
-            )
-        }
-    ]
-
-# Display prior chat messages (ignoring the system prompt)
-for message in st.session_state.messages:
-    if message["role"] != "system":
-        with st.chat_message(message["role"]):
-            if message.get("content"):
-                st.markdown(message["content"])
-
-# User input via chat bar
-if user_query := st.chat_input("Ask the C-Suite (e.g., 'How is our cash flow and security posture?')..."):
-    # Append user message
-    st.session_state.messages.append({"role": "user", "content": user_query})
+for turn in st.session_state.chat_history:
     with st.chat_message("user"):
-        st.markdown(user_query)
-
-    # Generate response with Ollama
+        st.markdown(turn.query)
     with st.chat_message("assistant"):
-        with st.spinner("Consulting C-Suite Executives..."):
-            try:
-                # First chat call to check for tool calls
-                response = ollama.chat(
-                    model='llama3.2',
-                    messages=st.session_state.messages,
-                    tools=AVAILABLE_TOOLS
-                )
+        st.markdown(turn.answer)
 
-                # Append assistant message to history
-                st.session_state.messages.append(response.message)
-
-                # Handle tool execution if requested by the model
-                if response.message.get("tool_calls"):
-                    for tool_call in response.message.tool_calls:
-                        function_name = tool_call.function.name
-                        function_args = tool_call.function.arguments
-
-                        with st.expander(f"🛠️ Executing Tool: `{function_name}`"):
-                            st.write(f"Arguments: {function_args}")
-                            
-                            if function_name in tool_map:
-                                tool_output = tool_map[function_name](**function_args)
-                            else:
-                                tool_output = '{"error": "Tool not found"}'
-                            
-                            st.json(tool_output)
-
-                        # Append tool result back to messages
-                        st.session_state.messages.append({
-                            'role': 'tool',
-                            'tool_name': function_name,
-                            'content': str(tool_output)
-                        })
-
-                    # Second chat call to synthesize final answer using tool outputs
-                    final_response = ollama.chat(
-                        model='llama3.2',
-                        messages=st.session_state.messages
-                    )
-                    st.session_state.messages.append(final_response.message)
-                    st.markdown(final_response.message.content)
-                else:
-                    # Direct response if no tool was needed
-                    if response.message.get("content"):
-                        st.markdown(response.message.content)
-
-            except Exception as e:
-                st.error(f"Error connecting to local Ollama instance: {e}")
-                st.info("Make sure Ollama is running (`ollama serve`) and you have pulled the model (`ollama pull llama3.2`).")
+if query := st.chat_input("Ask about the simulated executive metrics", max_chars=2000):
+    try:
+        with admission.admit(identity):
+            with st.spinner("Consulting the executive tools..."):
+                updated_history = orchestrator.run(query, st.session_state.chat_history)
+        completed_turn: Turn = updated_history[-1]
+        st.session_state.chat_history = updated_history
+        with st.chat_message("user"):
+            st.markdown(completed_turn.query)
+        with st.chat_message("assistant"):
+            st.markdown(completed_turn.answer)
+    except (CapacityError, TurnError) as error:
+        st.error(str(error))
+    except Exception as error:
+        logger.error("Chat request failed: %s", type(error).__name__)
+        st.error("The request could not be completed. Please try again later.")
