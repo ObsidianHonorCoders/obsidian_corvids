@@ -29,20 +29,19 @@ The CI workflow runs these tests, lint, and dependency auditing on Python 3.12.
 
 ## Cloudflare Tunnel Deployment
 
-The included Compose stack runs the app, Ollama, and `cloudflared`. It publishes no host ports. The app talks to Ollama on a private Docker bridge; Ollama's API is never routed through the tunnel. Docker networks allow outbound access for model downloads. Use one app replica: concurrency and per-user quotas are process-local.
+The included Compose stack runs the app, Ollama, a model-pull initialization job, and `cloudflared`. The app starts only after Ollama is healthy and the configured model pull succeeds. It publishes no host ports. The app and Ollama communicate over an internal Docker network; Ollama's API is never routed through the tunnel. A separate internal network connects the app to `cloudflared`. An egress-enabled network allows Ollama to download models, `cloudflared` to connect to Cloudflare, and the app to retrieve Cloudflare Access signing keys. Restrict host egress for the app to DNS and `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs`; the Compose bridge itself does not enforce destination allowlists. The app and tunnel containers use read-only root filesystems, drop Linux capabilities, and disallow privilege escalation. Use one app replica: concurrency and per-user quotas are process-local.
 
 1. Create a remotely managed Cloudflare Tunnel. Create a Cloudflare Access self-hosted application and a deny-by-default Allow policy for the intended users **before** publishing a public hostname.
 2. Add a public hostname route targeting `http://app:8501` from the tunnel connector. Enable Access JWT validation with the tunnel's **Protect with Access** setting and configure the Access policy and session duration.
 3. Obtain the Access team slug and the application's AUD tag. Get the Python base image digest and versioned Ollama and cloudflared images from trusted registries.
 4. Copy `.env.example` to `.env` and replace the image and Access placeholders. Use a cloudflared image version 2025.4.0 or later (required for token-file support). Create `secrets/cloudflared-token` containing only the tunnel token, with filesystem access restricted to deployment administrators. This path is ignored by Git and excluded from the app build context.
-5. Start the stack and pull the model:
+5. Start the stack. Compose waits for the configured model pull to finish before starting the app:
 
 ```powershell
 Copy-Item .env.example .env
 # Edit .env and create secrets/cloudflared-token before continuing.
 docker compose config --quiet
 docker compose up --build -d
-docker compose exec ollama ollama pull llama3.2
 ```
 
 6. In Cloudflare, confirm the hostname has the intended Access application and policy. Test that an unauthenticated browser is denied, an authorized browser can use chat, the origin has no published host port, and the public hostname cannot access Ollama. Test expiration and reauthentication as well.

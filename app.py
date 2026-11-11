@@ -4,7 +4,7 @@ import ollama
 import streamlit as st
 
 from orchestrator import Orchestrator, Turn, TurnError
-from runtime import AccessDenied, AccessVerifier, Admission, CapacityError, Settings
+from runtime import AccessDenied, AccessVerifier, Admission, CapacityError, Settings, access_token
 
 
 logger = logging.getLogger("obsidian_corvids")
@@ -21,7 +21,7 @@ def services():
 
 try:
     settings, access, admission, orchestrator = services()
-    token = st.context.headers.get("Cf-Access-Jwt-Assertion")
+    token = access_token(st.context.headers)
     identity = access.identity(token)
 except (AccessDenied, ValueError) as error:
     st.error(str(error))
@@ -59,7 +59,7 @@ for turn in st.session_state.chat_history:
     with st.chat_message("assistant"):
         st.markdown(turn.answer)
 
-if query := st.chat_input("Ask about the simulated executive metrics", max_chars=2000):
+if query := st.chat_input("Ask about the simulated executive metrics", max_chars=1500):
     try:
         with admission.admit(identity):
             with st.spinner("Consulting the executive tools..."):

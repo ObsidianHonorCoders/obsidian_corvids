@@ -38,12 +38,35 @@ class Settings:
             raise ValueError("Production requires a valid CF_ACCESS_TEAM and CF_ACCESS_AUD")
         host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
         parsed = urlsplit(host)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or parsed.path not in {"", "/"}
+        ):
             raise ValueError("OLLAMA_HOST must be an HTTP(S) URL without credentials")
         model = os.getenv("OLLAMA_MODEL", "llama3.2")
-        if not model.strip() or len(model) > 200:
+        if (
+            not model.strip()
+            or len(model) > 200
+            or model.startswith("-")
+            or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:/-" for character in model)
+        ):
             raise ValueError("OLLAMA_MODEL is invalid")
         return cls(environment, host, model, team, audience)
+
+
+def access_token(headers) -> str | None:
+    values = [
+        value for name, value in headers.items()
+        if name.casefold() == "cf-access-jwt-assertion"
+    ]
+    if len(values) > 1:
+        raise AccessDenied("Authentication could not be verified. Reconnect through Cloudflare Access.")
+    return values[0] if values else None
 
 
 class AccessVerifier:

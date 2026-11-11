@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from runtime import AccessDenied, AccessVerifier, Admission, CapacityError, Settings
+from runtime import AccessDenied, AccessVerifier, Admission, CapacityError, Settings, access_token
 
 
 class RuntimeTests(unittest.TestCase):
@@ -11,7 +11,12 @@ class RuntimeTests(unittest.TestCase):
                 Settings.load()
 
     def test_configuration_rejects_invalid_mode_and_credentials(self):
-        for environment in ({"APP_ENV": "prod"}, {"OLLAMA_HOST": "http://user:secret@localhost"}):
+        for environment in (
+            {"APP_ENV": "prod"},
+            {"OLLAMA_HOST": "http://user:secret@localhost"},
+            {"OLLAMA_HOST": "http://localhost:11434/api?token=secret"},
+            {"OLLAMA_MODEL": "-malformed"},
+        ):
             with patch.dict("os.environ", environment, clear=True):
                 with self.assertRaises(ValueError):
                     Settings.load()
@@ -19,6 +24,13 @@ class RuntimeTests(unittest.TestCase):
     def test_development_identity(self):
         with patch.dict("os.environ", {}, clear=True):
             self.assertEqual(AccessVerifier(Settings.load()).identity(None), "local-development")
+
+    def test_access_header_lookup_is_case_insensitive_and_rejects_duplicates(self):
+        self.assertEqual(access_token({"cf-access-jwt-assertion": "token"}), "token")
+        self.assertEqual(access_token({"CF-ACCESS-JWT-ASSERTION": "token"}), "token")
+        self.assertIsNone(access_token({"other": "value"}))
+        with self.assertRaises(AccessDenied):
+            access_token({"Cf-Access-Jwt-Assertion": "one", "cf-access-jwt-assertion": "two"})
 
     def test_access_checks_claims_and_rejects_missing_token(self):
         jwt = Mock()
