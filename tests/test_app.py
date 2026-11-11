@@ -1,4 +1,5 @@
 import runpy
+import os
 import sys
 import unittest
 from types import SimpleNamespace
@@ -39,7 +40,9 @@ class AppTests(unittest.TestCase):
         ollama = MagicMock()
         ollama.Client.return_value = client
 
-        with patch.dict(sys.modules, {"streamlit": ui, "ollama": ollama}):
+        with patch.dict(os.environ, {"APP_ENV": "development"}), patch.dict(
+            sys.modules, {"streamlit": ui, "ollama": ollama}
+        ):
             runpy.run_path("app.py")
 
         self.assertEqual(len(ui.session_state.chat_history), 1)
@@ -47,7 +50,9 @@ class AppTests(unittest.TestCase):
         self.assertEqual(ui.markdown.call_args_list[-1].args[0], "This is a simulated finance summary.")
 
         ui.chat_input.return_value = None
-        with patch.dict(sys.modules, {"streamlit": ui, "ollama": ollama}):
+        with patch.dict(os.environ, {"APP_ENV": "development"}), patch.dict(
+            sys.modules, {"streamlit": ui, "ollama": ollama}
+        ):
             runpy.run_path("app.py")
         rendered = [call.args[0] for call in ui.markdown.call_args_list]
         self.assertEqual(rendered[-2:], ["Review finances", "This is a simulated finance summary."])

@@ -1,4 +1,5 @@
 import logging
+import os
 
 import ollama
 import streamlit as st
@@ -17,7 +18,8 @@ st.set_page_config(page_title="Obsidian Corvids", page_icon="assets/logo.png", l
 def services():
     settings = Settings.load()
     client = ollama.Client(host=settings.ollama_host, timeout=120)
-    return settings, AccessVerifier(settings), Admission(), Orchestrator(client, settings.model)
+    admission = Admission(database_path=os.getenv("ADMISSION_DB_PATH", ":memory:"))
+    return settings, AccessVerifier(settings), admission, Orchestrator(client, settings.model)
 
 try:
     settings, access, admission, orchestrator = services()

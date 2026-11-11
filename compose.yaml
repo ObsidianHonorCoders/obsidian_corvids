@@ -42,12 +42,21 @@ services:
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:?Set the Cloudflare Access application audience}
       OLLAMA_HOST: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      ADMISSION_DB_PATH: /var/lib/obsidian/admission.sqlite3
+      HTTPS_PROXY: http://egress-proxy:3128
+      HTTP_PROXY: http://egress-proxy:3128
+      NO_PROXY: localhost,127.0.0.1,ollama,egress-proxy
+      https_proxy: http://egress-proxy:3128
+      http_proxy: http://egress-proxy:3128
+      no_proxy: localhost,127.0.0.1,ollama,egress-proxy
     depends_on:
       model-init:
         condition: service_completed_successfully
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
+    volumes:
+      - admission_state:/var/lib/obsidian
     cap_drop:
       - ALL
     security_opt:
@@ -62,6 +71,25 @@ services:
     networks:
       - backend
       - ingress
+      - proxy
+
+  egress-proxy:
+    image: ${EGRESS_PROXY_IMAGE:?Set EGRESS_PROXY_IMAGE to a version-pinned Squid image}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/squid:rw,noexec,nosuid,size=32m
+      - /var/log/squid:rw,noexec,nosuid,size=16m
+      - /run:rw,noexec,nosuid,size=4m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    volumes:
+      - ./deploy/squid.conf:/etc/squid/squid.conf:ro
+    networks:
+      - proxy
       - egress
 
   cloudflared:
@@ -92,11 +120,15 @@ networks:
   ingress:
     name: obsidian-ingress
     internal: true
+  proxy:
+    name: obsidian-proxy
+    internal: true
   egress:
     name: obsidian-egress
 
 volumes:
   ollama_models:
+  admission_state:
 
 secrets:
   tunnel_token:

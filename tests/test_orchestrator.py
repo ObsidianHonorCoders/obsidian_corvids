@@ -2,7 +2,7 @@ import copy
 import unittest
 from unittest.mock import Mock
 
-from orchestrator import Limits, Orchestrator, TurnError
+from orchestrator import Limits, Orchestrator, TurnError, required_tools
 
 
 def response(content="", calls=None):
@@ -40,15 +40,18 @@ class OrchestratorTests(unittest.TestCase):
         snapshot = copy.deepcopy(history)
         self.client.chat.side_effect = [response(calls=[call(arguments={"unexpected": "value"})])]
         with self.assertRaises(TurnError):
-            self.engine.run("Review again", history)
+            self.engine.run("Review finances again", history)
         self.assertEqual(history, snapshot)
 
     def test_synthesis_failure_does_not_mutate_history(self):
         history = self.succeed()
         snapshot = copy.deepcopy(history)
-        self.client.chat.side_effect = [response(calls=[call()]), TimeoutError("private endpoint")]
+        self.client.chat.side_effect = [
+            response(calls=[call()]),
+            TimeoutError("private endpoint"),
+        ]
         with self.assertRaises(TimeoutError):
-            self.engine.run("Review again", history)
+            self.engine.run("Review finances again", history)
         self.assertEqual(history, snapshot)
 
     def test_unknown_duplicate_and_excessive_tools(self):
@@ -57,6 +60,18 @@ class OrchestratorTests(unittest.TestCase):
                 self.client.chat.side_effect = [response(calls=calls)]
                 with self.assertRaises(TurnError):
                     self.engine.run("Review", [])
+
+    def test_domain_router_maps_explicit_and_broad_queries(self):
+        self.assertEqual(required_tools("Review cash flow and security posture"), {"get_cfo_data", "get_ciso_data"})
+        self.assertEqual(required_tools("How did the campaign perform?"), {"get_cmo_data"})
+        self.assertEqual(required_tools("Give me an executive overview"), {
+            "get_cfo_data", "get_ciso_data", "get_cmo_data", "get_coo_data",
+        })
+
+    def test_model_cannot_select_unrelated_tools(self):
+        self.client.chat.side_effect = [response(calls=[call("get_cfo_data")])]
+        with self.assertRaisesRegex(TurnError, "do not match"):
+            self.engine.run("How did the marketing campaign perform?", [])
 
     def test_missing_tool_or_empty_answer_is_rejected(self):
         for responses in ([response("Unsupported direct answer")], [response(calls=[call()]), response("")]):

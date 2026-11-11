@@ -8,6 +8,7 @@ __pycache__
 !.env.example
 secrets
 .streamlit/secrets.toml
+data
 .pytest_cache
 .ruff_cache
 tests
