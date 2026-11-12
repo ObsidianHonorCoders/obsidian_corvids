@@ -1,0 +1,96 @@
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+
+REQUIRED_SERVICES = {"app", "ollama", "model-init", "egress-proxy", "cloudflared"}
+IMAGE_DIGEST = re.compile(r".+@sha256:[0-9a-f]{64}$")
+TEAM_SLUG = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def _fail(message: str) -> None:
+    raise ValueError(message)
+
+
+def validate_config(config: dict[str, Any]) -> None:
+    services = config.get("services")
+    if not isinstance(services, dict) or not REQUIRED_SERVICES <= services.keys():
+        _fail("Compose is missing one or more required services.")
+
+    app = services["app"]
+    build_args = app.get("build", {}).get("args", {})
+    image_refs = [build_args.get("PYTHON_BASE_IMAGE")]
+    image_refs.extend(service["image"] for service in services.values() if "image" in service)
+    if any(not isinstance(image, str) or not IMAGE_DIGEST.fullmatch(image) for image in image_refs):
+        _fail("Every deployment image must use a verified @sha256:<64 lowercase hex> digest.")
+    environment = app.get("environment", {})
+    team = environment.get("CF_ACCESS_TEAM")
+    audience = environment.get("CF_ACCESS_AUD")
+    if not isinstance(team, str) or not TEAM_SLUG.fullmatch(team) or team == "your-team-name":
+        _fail("CF_ACCESS_TEAM must be the configured Cloudflare team slug, not an example value.")
+    if (
+        not isinstance(audience, str)
+        or not audience.strip()
+        or audience.casefold().startswith("your-")
+        or "placeholder" in audience.casefold()
+        or "replace_with" in audience.casefold()
+    ):
+        _fail("CF_ACCESS_AUD must be the configured Cloudflare application audience.")
+
+    ollama_networks = set(services["ollama"].get("networks", {}))
+    tunnel_networks = set(services["cloudflared"].get("networks", {}))
+    if "backend" not in ollama_networks or "model-egress" not in ollama_networks:
+        _fail("Ollama must use the backend and isolated model-egress networks.")
+    if "ingress" not in tunnel_networks or "egress" not in tunnel_networks:
+        _fail("cloudflared must use the ingress and tunnel-egress networks.")
+    if ollama_networks & tunnel_networks:
+        _fail("Ollama and cloudflared must not share a Docker network.")
+
+    if app.get("ports") or services["ollama"].get("ports"):
+        _fail("The app and Ollama API must not publish host ports.")
+    for service_name in ("app", "egress-proxy", "cloudflared"):
+        service = services[service_name]
+        if service.get("read_only") is not True:
+            _fail(f"{service_name} must use a read-only root filesystem.")
+        if "ALL" not in service.get("cap_drop", []):
+            _fail(f"{service_name} must drop all Linux capabilities.")
+        if "no-new-privileges:true" not in service.get("security_opt", []):
+            _fail(f"{service_name} must disallow privilege escalation.")
+
+    for service_name, service in services.items():
+        logging = service.get("logging", {})
+        options = logging.get("options", {})
+        if logging.get("driver") != "json-file" or not options.get("max-size") or not options.get("max-file"):
+            _fail(f"{service_name} must have bounded JSON log rotation.")
+
+
+def main() -> int:
+    secret_path = Path("secrets/cloudflared-token")
+    if not secret_path.is_file() or not secret_path.read_bytes().strip():
+        print("Missing non-empty secrets/cloudflared-token file.", file=sys.stderr)
+        return 1
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "config", "--format", "json"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+        )
+        validate_config(json.loads(result.stdout))
+    except FileNotFoundError:
+        print("Docker Compose v2 is required for deployment validation.", file=sys.stderr)
+        return 1
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError) as error:
+        print(f"Deployment configuration check failed: {error}", file=sys.stderr)
+        return 1
+    print("Deployment configuration passed production policy checks.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

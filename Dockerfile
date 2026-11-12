@@ -1,4 +1,4 @@
-ARG PYTHON_BASE_IMAGE=python:3.12-slim
+ARG PYTHON_BASE_IMAGE
 FROM ${PYTHON_BASE_IMAGE}
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -8,8 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 COPY requirements.txt ./
-RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir -r requirements.txt \
+RUN python -m pip install --no-cache-dir -r requirements.txt \
     && useradd --create-home --uid 10001 app \
     && mkdir -p /var/lib/obsidian \
     && chown app:app /var/lib/obsidian

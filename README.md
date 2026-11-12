@@ -30,7 +30,7 @@ The CI workflow runs these tests, lint, and dependency auditing on Python 3.12.
 
 ## Cloudflare Tunnel Deployment
 
-The included Compose stack runs the app, Ollama, a model-pull initialization job, a restricted Squid egress proxy, and `cloudflared`. The app starts only after Ollama is healthy and the configured model pull succeeds. It publishes no host ports. Ollama's API is on an internal Docker network and is never routed through the tunnel. The app has no direct egress route; its proxy permits HTTPS CONNECT only to `*.cloudflareaccess.com` for Access signing-key retrieval. Ollama and `cloudflared` use a separate egress-enabled network to download models and connect to Cloudflare. The app, proxy, and tunnel containers use read-only root filesystems, drop Linux capabilities, and disallow privilege escalation. The SQLite request limiter persists in the local named volume and coordinates processes sharing that volume on one host. Cross-host scaling requires a shared limiter.
+The included Compose stack runs the app, Ollama, a model-pull initialization job, a restricted Squid egress proxy, and `cloudflared`. The app starts only after Ollama is healthy and the configured model pull succeeds. It publishes no host ports. Ollama's API is on an internal Docker network and is never routed through the tunnel; the tunnel connector does not share Ollama's egress network. The app has no direct egress route; its proxy permits HTTPS CONNECT only to `*.cloudflareaccess.com` for Access signing-key retrieval. Ollama and `cloudflared` use separate egress-enabled networks to download models and connect to Cloudflare, respectively. Containers use bounded JSON log rotation; the app, proxy, and tunnel use read-only root filesystems, drop Linux capabilities, and disallow privilege escalation. The SQLite request limiter persists in the local named volume and coordinates processes sharing that volume on one host. Cross-host scaling requires a shared limiter.
 
 1. Create a remotely managed Cloudflare Tunnel. Create a Cloudflare Access self-hosted application and a deny-by-default Allow policy for the intended users **before** publishing a public hostname.
 2. Add a public hostname route targeting `http://app:8501` from the tunnel connector. Enable Access JWT validation with the tunnel's **Protect with Access** setting and configure the Access policy and session duration.
@@ -40,8 +40,8 @@ The included Compose stack runs the app, Ollama, a model-pull initialization job
 
 ```powershell
 Copy-Item .env.example .env
-# Edit .env and create secrets/cloudflared-token before continuing.
-docker compose config --quiet
+# Replace all image placeholders with verified immutable digests and create the tunnel token file.
+python deploy/check_compose.py
 docker compose up --build -d
 ```
 
@@ -55,7 +55,7 @@ Do not set `APP_ENV=development` on a published service. The development mode in
 
 - This is a single-host demo deployment, not a highly available production architecture. Ollama needs sufficient RAM/VRAM; model inference capacity has not been load-tested.
 - The SQLite limiter only coordinates processes that share the same local `admission_state` volume. Use a shared service such as Redis before deploying replicas across hosts. Back up or deliberately discard the rate-limit volume according to the deployment quota and retention policy.
-- Dependency ranges are not a lockfile. Resolve and commit a reviewed, hash-pinned lock and pin container images by digest before a production release. The current environment could not reach its configured package index, so dependencies and image compatibility were not verified here.
+- Dependency ranges are not a lockfile. Resolve and commit a reviewed, hash-pinned lock before a production release. The deployment preflight rejects mutable image tags and example Access values, but digest syntax alone does not establish registry trust; replace the image placeholders with digests verified against trusted registries. The current environment could not reach its configured package index, so dependencies and image compatibility were not verified here.
 - Configure host backups for the `ollama_models` volume, service monitoring, disk and GPU alerts, incident response, and an update/rollback schedule. Avoid collecting prompts or tokens in logs.
 - Real data requires separate least-privilege connectors, authorization by authenticated user and tenant, provenance and freshness metadata, audit logging, privacy/retention rules, and security testing. The current tools must remain demo-only.
 
