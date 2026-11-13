@@ -33,7 +33,7 @@ def valid_config():
             "app": service(
                 ("backend", "ingress", "proxy"),
                 build={"args": {"PYTHON_BASE_IMAGE": IMAGE}},
-                environment={"CF_ACCESS_TEAM": "ci-test", "CF_ACCESS_AUD": "ci-test-audience"},
+                environment={"CF_ACCESS_TEAM": "acme-prod", "CF_ACCESS_AUD": "acme-prod-audience"},
                 read_only=True,
                 cap_drop=["ALL"],
                 security_opt=["no-new-privileges:true"],
@@ -66,6 +66,12 @@ class DeploymentPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "digest"):
             validate_config(config)
 
+    def test_rejects_ci_placeholder_image_digest(self):
+        config = valid_config()
+        config["services"]["ollama"]["image"] = "ollama/ollama@sha256:" + "0" * 64
+        with self.assertRaisesRegex(ValueError, "verified"):
+            validate_config(config)
+
     def test_rejects_example_access_configuration(self):
         config = valid_config()
         config["services"]["app"]["environment"] = {
@@ -81,6 +87,15 @@ class DeploymentPolicyTests(unittest.TestCase):
             "your-access-application-audience"
         )
         with self.assertRaisesRegex(ValueError, "application audience"):
+            validate_config(config)
+
+    def test_rejects_ci_access_values(self):
+        config = valid_config()
+        config["services"]["app"]["environment"] = {
+            "CF_ACCESS_TEAM": "ci-test",
+            "CF_ACCESS_AUD": "ci-test-audience",
+        }
+        with self.assertRaisesRegex(ValueError, "team slug"):
             validate_config(config)
 
     def test_rejects_shared_tunnel_and_ollama_network(self):

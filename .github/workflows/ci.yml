@@ -22,12 +22,12 @@ jobs:
       - run: python -m pip install -r requirements-dev.txt
       - run: mkdir -p secrets && printf 'ci-test-token' > secrets/cloudflared-token && python deploy/check_compose.py
         env:
-          PYTHON_BASE_IMAGE: python:3.12-slim@sha256:0000000000000000000000000000000000000000000000000000000000000000
-          OLLAMA_IMAGE: ollama/ollama@sha256:0000000000000000000000000000000000000000000000000000000000000000
-          CLOUDFLARED_IMAGE: cloudflare/cloudflared@sha256:0000000000000000000000000000000000000000000000000000000000000000
-          EGRESS_PROXY_IMAGE: ubuntu/squid@sha256:0000000000000000000000000000000000000000000000000000000000000000
-          CF_ACCESS_TEAM: ci-test
-          CF_ACCESS_AUD: ci-test-audience
+          PYTHON_BASE_IMAGE: python:3.12-slim@sha256:1111111111111111111111111111111111111111111111111111111111111111
+          OLLAMA_IMAGE: ollama/ollama@sha256:1111111111111111111111111111111111111111111111111111111111111111
+          CLOUDFLARED_IMAGE: cloudflare/cloudflared@sha256:1111111111111111111111111111111111111111111111111111111111111111
+          EGRESS_PROXY_IMAGE: ubuntu/squid@sha256:1111111111111111111111111111111111111111111111111111111111111111
+          CF_ACCESS_TEAM: acme-prod
+          CF_ACCESS_AUD: acme-prod-audience
       - run: python -m unittest discover -s tests -v
       - run: ruff check app.py orchestrator.py runtime.py tools.py deploy tests
       - run: pip-audit -r requirements.txt

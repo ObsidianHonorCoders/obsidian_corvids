@@ -45,17 +45,27 @@ def validate_config(config: dict[str, Any]) -> None:
     build_args = app.get("build", {}).get("args", {})
     image_refs = [build_args.get("PYTHON_BASE_IMAGE")]
     image_refs.extend(service["image"] for service in services.values() if "image" in service)
-    if any(not isinstance(image, str) or not IMAGE_DIGEST.fullmatch(image) for image in image_refs):
+    if any(
+        not isinstance(image, str)
+        or not IMAGE_DIGEST.fullmatch(image)
+        or image.endswith("0" * 64)
+        for image in image_refs
+    ):
         _fail("Every deployment image must use a verified @sha256:<64 lowercase hex> digest.")
     environment = app.get("environment", {})
     team = environment.get("CF_ACCESS_TEAM")
     audience = environment.get("CF_ACCESS_AUD")
-    if not isinstance(team, str) or not TEAM_SLUG.fullmatch(team) or team == "your-team-name":
+    if (
+        not isinstance(team, str)
+        or not TEAM_SLUG.fullmatch(team)
+        or team in {"your-team-name", "ci-test"}
+    ):
         _fail("CF_ACCESS_TEAM must be the configured Cloudflare team slug, not an example value.")
     if (
         not isinstance(audience, str)
         or not audience.strip()
         or audience.casefold().startswith("your-")
+        or audience.casefold() == "ci-test-audience"
         or "placeholder" in audience.casefold()
         or "replace_with" in audience.casefold()
     ):
