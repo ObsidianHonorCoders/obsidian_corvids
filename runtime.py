@@ -106,7 +106,7 @@ class AccessVerifier:
             return subject
         except AccessDenied:
             raise
-        except Exception:
+        except Exception:  # noqa: BLE001
             raise AccessDenied("Authentication could not be verified. Reconnect through Cloudflare Access.") from None
 
 

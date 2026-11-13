@@ -1,11 +1,10 @@
 import json
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 from unittest.mock import patch
 
 from deploy.check_compose import main, validate_config
-
 
 IMAGE = "example/service@sha256:" + "a" * 64
 

@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 REQUIRED_SERVICES = {"app", "ollama", "model-init", "egress-proxy", "cloudflared"}
 REQUIRED_NETWORKS = {
     "app": {"backend", "ingress", "proxy"},

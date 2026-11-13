@@ -1,5 +1,5 @@
-import runpy
 import os
+import runpy
 import sys
 import unittest
 from types import SimpleNamespace

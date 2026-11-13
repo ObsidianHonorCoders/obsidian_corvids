@@ -9,7 +9,7 @@ Requirements: Python 3.12, Ollama, and the `llama3.2` model.
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+python -m pip install --require-hashes -r requirements.lock
 ollama pull llama3.2
 $env:APP_ENV = "development"
 python -m streamlit run app.py
@@ -21,12 +21,20 @@ Local mode must be explicitly enabled and has no authentication; it is for loopb
 
 ```powershell
 python -m unittest discover -s tests -v
-python -m pip install -r requirements-dev.txt
-ruff check app.py orchestrator.py runtime.py tools.py tests
-pip-audit -r requirements.txt
+python -m pip install --require-hashes -r requirements-dev.lock
+ruff check app.py orchestrator.py runtime.py tools.py deploy tests
+pip-audit -r requirements.lock
 ```
 
-The CI workflow runs these tests, lint, and dependency auditing on Python 3.12.
+The CI workflow runs these tests, lint, and dependency auditing on Python 3.12. The range-based `requirements.txt` and `requirements-dev.txt` files are lock inputs; production and CI install from the hash-pinned lock files.
+
+To intentionally refresh the locks, install the development lock and compile both inputs against the configured package index:
+
+```powershell
+python -m pip install --require-hashes -r requirements-dev.lock
+pip-compile --allow-unsafe --generate-hashes --resolver=backtracking --output-file=requirements.lock requirements.txt
+pip-compile --allow-unsafe --generate-hashes --resolver=backtracking --output-file=requirements-dev.lock requirements-dev.txt
+```
 
 ## Cloudflare Tunnel Deployment
 
@@ -55,7 +63,7 @@ Do not set `APP_ENV=development` on a published service. The development mode in
 
 - This is a single-host demo deployment, not a highly available production architecture. Ollama needs sufficient RAM/VRAM; model inference capacity has not been load-tested.
 - The SQLite limiter only coordinates processes that share the same local `admission_state` volume. Use a shared service such as Redis before deploying replicas across hosts. Back up or deliberately discard the rate-limit volume according to the deployment quota and retention policy.
-- Dependency ranges are not a lockfile. Resolve and commit a reviewed, hash-pinned lock before a production release. The deployment preflight rejects mutable image tags and example Access values, but digest syntax alone does not establish registry trust; replace the image placeholders with digests verified against trusted registries. The current environment could not reach its configured package index, so dependencies and image compatibility were not verified here.
+- Dependency locks are generated with hashes and used for production image and CI installation. Review lock updates and run the dependency audit before release. The deployment preflight rejects mutable image tags and example Access values, but digest syntax alone does not establish registry trust; replace the image placeholders with digests verified against trusted registries.
 - Configure host backups for the `ollama_models` volume, service monitoring, disk and GPU alerts, incident response, and an update/rollback schedule. Avoid collecting prompts or tokens in logs.
 - Real data requires separate least-privilege connectors, authorization by authenticated user and tenant, provenance and freshness metadata, audit logging, privacy/retention rules, and security testing. The current tools must remain demo-only.
 

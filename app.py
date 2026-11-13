@@ -5,8 +5,14 @@ import ollama
 import streamlit as st
 
 from orchestrator import Orchestrator, Turn, TurnError
-from runtime import AccessDenied, AccessVerifier, Admission, CapacityError, Settings, access_token
-
+from runtime import (
+    AccessDenied,
+    AccessVerifier,
+    Admission,
+    CapacityError,
+    Settings,
+    access_token,
+)
 
 logger = logging.getLogger("obsidian_corvids")
 
@@ -28,7 +34,7 @@ try:
 except (AccessDenied, ValueError) as error:
     st.error(str(error))
     st.stop()
-except Exception as error:
+except Exception as error:  # noqa: BLE001
     logger.error("Service initialization failed: %s", type(error).__name__)
     st.error("The service is temporarily unavailable.")
     st.stop()
@@ -63,9 +69,8 @@ for turn in st.session_state.chat_history:
 
 if query := st.chat_input("Ask about the simulated executive metrics", max_chars=1500):
     try:
-        with admission.admit(identity):
-            with st.spinner("Consulting the executive tools..."):
-                updated_history = orchestrator.run(query, st.session_state.chat_history)
+        with admission.admit(identity), st.spinner("Consulting the executive tools..."):
+            updated_history = orchestrator.run(query, st.session_state.chat_history)
         completed_turn: Turn = updated_history[-1]
         st.session_state.chat_history = updated_history
         with st.chat_message("user"):
@@ -74,6 +79,6 @@ if query := st.chat_input("Ask about the simulated executive metrics", max_chars
             st.markdown(completed_turn.answer)
     except (CapacityError, TurnError) as error:
         st.error(str(error))
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001
         logger.error("Chat request failed: %s", type(error).__name__)
         st.error("The request could not be completed. Please try again later.")

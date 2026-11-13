@@ -1,5 +1,6 @@
 import json
 
+
 def get_cfo_data() -> str:
     """Return simulated CFO metrics for UI and orchestration demonstrations."""
     return json.dumps({

@@ -6,7 +6,6 @@ from typing import Any, Protocol
 
 from tools import AVAILABLE_TOOLS
 
-
 SYSTEM_PROMPT = (
     "You are the Executive Orchestrator for Obsidian Corvids. "
     "Consult the relevant CFO, CISO, CMO or COO tools before answering. "

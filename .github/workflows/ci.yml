@@ -18,8 +18,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: requirements*.txt
-      - run: python -m pip install -r requirements-dev.txt
+            cache-dependency-path: |
+              requirements*.txt
+              requirements*.lock
+          - run: python -m pip install --require-hashes -r requirements-dev.lock
       - run: mkdir -p secrets && printf 'ci-test-token' > secrets/cloudflared-token && python deploy/check_compose.py
         env:
           PYTHON_BASE_IMAGE: python:3.12-slim@sha256:1111111111111111111111111111111111111111111111111111111111111111
@@ -30,4 +32,4 @@ jobs:
           CF_ACCESS_AUD: acme-prod-audience
       - run: python -m unittest discover -s tests -v
       - run: ruff check app.py orchestrator.py runtime.py tools.py deploy tests
-      - run: pip-audit -r requirements.txt
+      - run: pip-audit -r requirements.lock

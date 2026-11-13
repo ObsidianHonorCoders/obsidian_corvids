@@ -1,17 +1,23 @@
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from importlib.util import find_spec
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
-from runtime import AccessDenied, AccessVerifier, Admission, CapacityError, Settings, access_token
+from runtime import (
+    AccessDenied,
+    AccessVerifier,
+    Admission,
+    CapacityError,
+    Settings,
+    access_token,
+)
 
 
 class RuntimeTests(unittest.TestCase):
     def test_production_requires_access_configuration(self):
-        with patch.dict("os.environ", {"APP_ENV": "production"}, clear=True):
-            with self.assertRaises(ValueError):
-                Settings.load()
+        with patch.dict("os.environ", {"APP_ENV": "production"}, clear=True), self.assertRaises(ValueError):
+            Settings.load()
 
     def test_configuration_rejects_invalid_mode_and_credentials(self):
         for environment in (
@@ -20,18 +26,16 @@ class RuntimeTests(unittest.TestCase):
             {"OLLAMA_HOST": "http://localhost:11434/api?token=secret"},
             {"OLLAMA_MODEL": "-malformed"},
         ):
-            with patch.dict("os.environ", environment, clear=True):
-                with self.assertRaises(ValueError):
-                    Settings.load()
+            with patch.dict("os.environ", environment, clear=True), self.assertRaises(ValueError):
+                Settings.load()
 
     def test_development_identity(self):
         with patch.dict("os.environ", {"APP_ENV": "development"}, clear=True):
             self.assertEqual(AccessVerifier(Settings.load()).identity(None), "local-development")
 
     def test_missing_environment_defaults_to_production(self):
-        with patch.dict("os.environ", {}, clear=True):
-            with self.assertRaisesRegex(ValueError, "CF_ACCESS_TEAM"):
-                Settings.load()
+        with patch.dict("os.environ", {}, clear=True), self.assertRaisesRegex(ValueError, "CF_ACCESS_TEAM"):
+            Settings.load()
 
     def test_access_header_lookup_is_case_insensitive_and_rejects_duplicates(self):
         self.assertEqual(access_token({"cf-access-jwt-assertion": "token"}), "token")
@@ -73,8 +77,8 @@ class RuntimeTests(unittest.TestCase):
                 "sub": "user-123",
                 "iss": "https://team.cloudflareaccess.com",
                 "aud": "audience",
-                "iat": datetime.now(timezone.utc),
-                "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+                "iat": datetime.now(UTC),
+                "exp": datetime.now(UTC) + timedelta(minutes=5),
             }
             valid_token = jwt.encode(claims, private_key, algorithm="RS256", headers={"kid": "test-key"})
             self.assertEqual(verifier.identity(valid_token), "user-123")
@@ -92,16 +96,12 @@ class RuntimeTests(unittest.TestCase):
 
     def test_capacity_releases_after_failure_and_limits_users(self):
         admission = Admission(requests=2)
-        with admission.admit("alice"):
-            with self.assertRaises(CapacityError):
-                with admission.admit("bob"):
-                    pass
-        with self.assertRaises(RuntimeError):
-            with admission.admit("alice"):
-                raise RuntimeError()
-        with self.assertRaises(CapacityError):
-            with admission.admit("alice"):
-                pass
+        with admission.admit("alice"), self.assertRaises(CapacityError), admission.admit("bob"):
+            pass
+        with self.assertRaises(RuntimeError), admission.admit("alice"):
+            raise RuntimeError()
+        with self.assertRaises(CapacityError), admission.admit("alice"):
+            pass
         with admission.admit("bob"):
             pass
 
@@ -110,9 +110,8 @@ class RuntimeTests(unittest.TestCase):
         admission = Admission(requests=1, max_identities=1, clock=lambda: now[0])
         with admission.admit("alice"):
             pass
-        with self.assertRaises(CapacityError):
-            with admission.admit("bob"):
-                pass
+        with self.assertRaises(CapacityError), admission.admit("bob"):
+            pass
         now[0] = 61
         with admission.admit("bob"):
             pass
@@ -126,19 +125,15 @@ class RuntimeTests(unittest.TestCase):
             database = f"{directory}/admission.sqlite3"
             first = Admission(concurrent=1, requests=1, database_path=database)
             second = Admission(concurrent=1, requests=1, database_path=database)
-            with first.admit("alice"):
-                with self.assertRaises(CapacityError):
-                    with second.admit("bob"):
-                        pass
-            with self.assertRaises(CapacityError):
-                with second.admit("alice"):
-                    pass
+            with first.admit("alice"), self.assertRaises(CapacityError), second.admit("bob"):
+                pass
+            with self.assertRaises(CapacityError), second.admit("alice"):
+                pass
             first.close()
             second.close()
             restarted = Admission(concurrent=1, requests=1, database_path=database)
-            with self.assertRaises(CapacityError):
-                with restarted.admit("alice"):
-                    pass
+            with self.assertRaises(CapacityError), restarted.admit("alice"):
+                pass
             with restarted.admit("bob"):
                 pass
             restarted.close()
