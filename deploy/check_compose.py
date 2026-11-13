@@ -18,6 +18,7 @@ REQUIRED_NETWORKS = {
 INTERNAL_NETWORKS = {"backend", "ingress", "proxy"}
 IMAGE_DIGEST = re.compile(r".+@sha256:[0-9a-f]{64}$")
 TEAM_SLUG = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _fail(message: str) -> None:
@@ -78,8 +79,8 @@ def validate_config(config: dict[str, Any]) -> None:
             _fail(f"{service_name} must have bounded JSON log rotation.")
 
 
-def main() -> int:
-    secret_path = Path("secrets/cloudflared-token")
+def main(repository_root: Path = REPOSITORY_ROOT) -> int:
+    secret_path = repository_root / "secrets" / "cloudflared-token"
     if not secret_path.is_file() or not secret_path.read_bytes().strip():
         print("Missing non-empty secrets/cloudflared-token file.", file=sys.stderr)
         return 1
@@ -90,6 +91,7 @@ def main() -> int:
             capture_output=True,
             text=True,
             env=os.environ.copy(),
+            cwd=repository_root,
         )
         validate_config(json.loads(result.stdout))
     except FileNotFoundError:

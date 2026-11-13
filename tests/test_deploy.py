@@ -1,6 +1,10 @@
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
-from deploy.check_compose import validate_config
+from deploy.check_compose import main, validate_config
 
 
 IMAGE = "example/service@sha256:" + "a" * 64
@@ -108,6 +112,20 @@ class DeploymentPolicyTests(unittest.TestCase):
         config["services"]["app"]["logging"]["options"].pop("max-size")
         with self.assertRaisesRegex(ValueError, "log rotation"):
             validate_config(config)
+
+    def test_preflight_runs_compose_from_repository_root(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            secret = root / "secrets" / "cloudflared-token"
+            secret.parent.mkdir()
+            secret.write_text("test-token", encoding="utf-8")
+            result = type("Result", (), {"stdout": json.dumps(valid_config())})()
+
+            with patch("deploy.check_compose.subprocess.run", return_value=result) as run:
+                self.assertEqual(main(root), 0)
+
+            self.assertEqual(run.call_args.kwargs["cwd"], root)
+            self.assertEqual(run.call_args.args[0], ["docker", "compose", "config", "--format", "json"])
 
 
 if __name__ == "__main__":
