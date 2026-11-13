@@ -18,6 +18,13 @@ def service(networks=(), **overrides):
 
 def valid_config():
     return {
+        "networks": {
+            "backend": {"internal": True},
+            "ingress": {"internal": True},
+            "proxy": {"internal": True},
+            "egress": {"internal": False},
+            "model-egress": {"internal": False},
+        },
         "services": {
             "app": service(
                 ("backend", "ingress", "proxy"),
@@ -75,13 +82,25 @@ class DeploymentPolicyTests(unittest.TestCase):
     def test_rejects_shared_tunnel_and_ollama_network(self):
         config = valid_config()
         config["services"]["ollama"]["networks"]["egress"] = {}
-        with self.assertRaisesRegex(ValueError, "must not share"):
+        with self.assertRaisesRegex(ValueError, "unexpected Docker network"):
             validate_config(config)
 
     def test_rejects_publicly_published_service_ports(self):
         config = valid_config()
-        config["services"]["ollama"]["ports"] = ["11434:11434"]
-        with self.assertRaisesRegex(ValueError, "host ports"):
+        config["services"]["egress-proxy"]["ports"] = ["3128:3128"]
+        with self.assertRaisesRegex(ValueError, "publish a host port"):
+            validate_config(config)
+
+    def test_rejects_extra_network_attachment(self):
+        config = valid_config()
+        config["services"]["cloudflared"]["networks"]["backend"] = {}
+        with self.assertRaisesRegex(ValueError, "unexpected Docker network"):
+            validate_config(config)
+
+    def test_rejects_non_internal_application_network(self):
+        config = valid_config()
+        config["networks"]["ingress"]["internal"] = False
+        with self.assertRaisesRegex(ValueError, "must be internal"):
             validate_config(config)
 
     def test_rejects_unbounded_container_logs(self):

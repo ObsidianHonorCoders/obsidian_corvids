@@ -8,6 +8,14 @@ from typing import Any
 
 
 REQUIRED_SERVICES = {"app", "ollama", "model-init", "egress-proxy", "cloudflared"}
+REQUIRED_NETWORKS = {
+    "app": {"backend", "ingress", "proxy"},
+    "ollama": {"backend", "model-egress"},
+    "model-init": {"backend"},
+    "egress-proxy": {"proxy", "egress"},
+    "cloudflared": {"ingress", "egress"},
+}
+INTERNAL_NETWORKS = {"backend", "ingress", "proxy"}
 IMAGE_DIGEST = re.compile(r".+@sha256:[0-9a-f]{64}$")
 TEAM_SLUG = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
@@ -20,6 +28,17 @@ def validate_config(config: dict[str, Any]) -> None:
     services = config.get("services")
     if not isinstance(services, dict) or not REQUIRED_SERVICES <= services.keys():
         _fail("Compose is missing one or more required services.")
+    networks = config.get("networks")
+    if not isinstance(networks, dict) or not set().union(*REQUIRED_NETWORKS.values()) <= networks.keys():
+        _fail("Compose is missing one or more required networks.")
+
+    for network_name in INTERNAL_NETWORKS:
+        if networks[network_name].get("internal") is not True:
+            _fail(f"The {network_name} network must be internal.")
+    for network_name, expected in REQUIRED_NETWORKS.items():
+        actual = set(services[network_name].get("networks", {}))
+        if actual != expected:
+            _fail(f"{network_name} has an unexpected Docker network attachment.")
 
     app = services["app"]
     build_args = app.get("build", {}).get("args", {})
@@ -41,17 +60,8 @@ def validate_config(config: dict[str, Any]) -> None:
     ):
         _fail("CF_ACCESS_AUD must be the configured Cloudflare application audience.")
 
-    ollama_networks = set(services["ollama"].get("networks", {}))
-    tunnel_networks = set(services["cloudflared"].get("networks", {}))
-    if "backend" not in ollama_networks or "model-egress" not in ollama_networks:
-        _fail("Ollama must use the backend and isolated model-egress networks.")
-    if "ingress" not in tunnel_networks or "egress" not in tunnel_networks:
-        _fail("cloudflared must use the ingress and tunnel-egress networks.")
-    if ollama_networks & tunnel_networks:
-        _fail("Ollama and cloudflared must not share a Docker network.")
-
-    if app.get("ports") or services["ollama"].get("ports"):
-        _fail("The app and Ollama API must not publish host ports.")
+    if any(service.get("ports") for service in services.values()):
+        _fail("No service may publish a host port.")
     for service_name in ("app", "egress-proxy", "cloudflared"):
         service = services[service_name]
         if service.get("read_only") is not True:
