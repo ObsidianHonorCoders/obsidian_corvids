@@ -1,4 +1,4 @@
-ollama>=0.5,<1
+ollama>=0.6.3,<1
 streamlit>=1.42,<2
 PyJWT[crypto]>=2.15.1,<3
 
